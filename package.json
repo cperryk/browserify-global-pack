@@ -9,6 +9,7 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "browserify": "^14.4.0",
     "global-pack": "^1.0.0",
     "highland": "^2.11.1"
   },

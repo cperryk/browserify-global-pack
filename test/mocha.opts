@@ -1,1 +1,2 @@
-**/*.test.js
+--recursive
+test/**/*.test.js
