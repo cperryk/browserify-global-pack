@@ -28,6 +28,10 @@ describe('browserify-global-pack', function () {
     expect(()=>browserifyGlobalPack()).to.throw(Error);
   });
 
+  it ('throws error if both writeToDir and getOutfile are specified', function () {
+    expect(()=>browserifyGlobalPack({writeToDir: 'foo', getOutfile: ()=>{}})).to.throw(Error);
+  });
+
   it('writes global-pack chunks to files in the directory specified by writeToDir', function (done) {
     const bundler = browserify({fullPaths: true})
         .require(path.join(__dirname, 'input', './a.js'))
@@ -36,12 +40,14 @@ describe('browserify-global-pack', function () {
         }),
       bundlePromise = _(bundler.bundle()).toPromise(Promise);
 
-    bundlePromise.then(() => {
-      EXPECTED_FILES.forEach((filename, index) => {
-        assertFileContent(path.join(__dirname, './bundle', filename), expectedOutput[index]);
-      });
-      done();
-    });
+    bundlePromise
+      .then(() => {
+        EXPECTED_FILES.forEach((filename, index) => {
+          assertFileContent(path.join(__dirname, './bundle', filename), expectedOutput[index]);
+        });
+      })
+      .then(() => done())
+      .catch(err => done(err));
   });
 
   it('passes scope option to global-pack', function (done) {
@@ -53,18 +59,19 @@ describe('browserify-global-pack', function () {
         }),
       bundlePromise = _(bundler.bundle()).toPromise(Promise);
 
-    bundlePromise.then(()=>{
-      EXPECTED_FILES.forEach((filename, index)=> {
-        assertFileContent(path.join(__dirname, 'bundle', filename), expectedOutput[index].replace(/window.scope/g, 'foo.bar'));
-      });
-      done();
-    });
+    bundlePromise
+      .then(()=>{
+        EXPECTED_FILES.forEach((filename, index)=> {
+          assertFileContent(path.join(__dirname, 'bundle', filename), expectedOutput[index].replace(/window.modules/g, 'foo.bar'));
+        });
+      })
+      .then(() => done())
+      .catch(done);
   });
 
-  it ('works with expose', function () {
+  it ('sets filenames to expose expose values', function (done) {
     const bundler = browserify({fullPaths: true})
-        .require({
-          file: path.join(__dirname, 'input', './a.js'),
+        .require(path.join(__dirname, 'input', './a.js'), {
           expose: 'foo'
         })
         .plugin(browserifyGlobalPack, {
@@ -72,10 +79,49 @@ describe('browserify-global-pack', function () {
         }),
       bundlePromise = _(bundler.bundle()).toPromise(Promise);
 
-    bundlePromise.then(() => {
-      assertFileContent(path.join(__dirname, 'bundle', 'foo.js'), expectedOutput[1]);
-      done();
-    });
+    bundlePromise
+      .then(() => {
+        expect(fs.pathExistsSync(path.join(__dirname, 'bundle', 'foo.js'))).to.be.true;
+      })
+      .then(() => done())
+      .catch(done);
+  });
+
+  it('sets file paths with custom function if getOutpath', function (done) {
+    const bundler = browserify({fullPaths: true})
+        .require(path.join(__dirname, 'input', './a.js'))
+        .plugin(browserifyGlobalPack, {
+          getOutfile: () => path.join(__dirname, 'bundle', 'out-' + (i++) + '.js')
+        }),
+      bundlePromise = _(bundler.bundle()).toPromise(Promise);
+    let i = 0;
+
+    bundlePromise
+      .then(() => {
+        EXPECTED_FILES.forEach((filename, index) => {
+          assertFileContent(path.join(__dirname, 'bundle', 'out-' + index + '.js'), expectedOutput[index]);
+        });
+      })
+      .then(() => done())
+      .catch(done);
+  });
+
+  it ('puts modules associated with the same filename in the same file', function (done) {
+    const bundler = browserify({fullPaths: true})
+        .require(path.join(__dirname, 'input', './a.js'))
+        .plugin(browserifyGlobalPack, {
+          getOutfile: () => path.join(__dirname, 'bundle', 'out-' + (i++ <= 1 ? 0 : 1) + '.js')
+        }),
+      bundlePromise = _(bundler.bundle()).toPromise(Promise);
+    let i = 0;
+
+    bundlePromise
+      .then(() => {
+        assertFileContent(path.join(__dirname, 'bundle', 'out-0.js'), expectedOutput[0] + expectedOutput[1]);
+        assertFileContent(path.join(__dirname, 'bundle', 'out-1.js'), expectedOutput[2] + expectedOutput[3]);
+      })
+      .then(() => done())
+      .catch(done);
   });
 });
 

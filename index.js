@@ -3,8 +3,8 @@
 const globalPack = require('global-pack'),
   pathUtil = require('path'),
   fs = require('fs'),
-  highland = require('highland'),
-  writeFile = highland.wrapCallback(fs.writeFile);
+  _ = require('highland'),
+  writeFile = _.wrapCallback(fs.writeFile);
 
 /**
  * Returns a stream that takes in deps from a Browserify
@@ -15,86 +15,76 @@ const globalPack = require('global-pack'),
  * @param {object} [opts]
  * @param {string} [opts.scope] global-pack scope
  * @param {string} [opts.verbose] log file writes
+ * @param {function} [opts.getOutfile] Customize filenames of modules
+ * @returns {Stream}
  */
-function packAndWrite(writeToDir, {scope, verbose} = {}) {
-  const deps = [];
-
-  return highland.pipeline(
-    highland.doto(({file, id}) => deps.push({file, id})),
-    globalPack({scope}),
-    getFiles(deps, writeToDir),
-    writeFiles(verbose)
+function packAndWrite(writeToDir, {scope, verbose, getOutfile} = {}) {
+  return _.pipeline(
+    globalPack({scope, objectMode: true}),
+    assignOutfiles(writeToDir, getOutfile),
+    writeDeps(verbose)
   );
 };
 
 /**
- * Returns a stream that determines where each module in a global-pack
- * bundle should export, taking in global-pack strings and outputting
- * {id: string, outpath: string, content: string} objects.
- * @param {string[]} deps Array of module IDs
- * @param {string[]} writeToDir
- * @return {Stream}
- */
-function getFiles(deps, writeToDir) {
-  let i = 0;
-
-  return highland.map((str) => {
-    const content = str + '\n',
-      dep = deps[i - 1];
-    let id, sourceFile;
-
-    if (i === 0) {
-      id = 'prelude';
-      sourceFile = '(prelude)';
-    } else if (dep) {
-      id = dep.id;
-      sourceFile = dep.file;
-    } else {
-      id = 'postlude';
-      sourceFile = '(postlude)';
-    }
-    i++;
-
-    return {
-      id,
-      sourceFile,
-      outpath: getOutpath(id, writeToDir),
-      content
-    };
-  });
-}
-
-/**
- * For a given module ID and write destination, return the absolute filepath
- * to which the module should be written.
- * @param {string} id
+ * Returns a function that returns the absolute filepath
+ * to which a dep's content should be written.
  * @param {string} writeToDir
  * @return {string}
  */
-function getOutpath(id, writeToDir) {
-  if (pathUtil.isAbsolute(id)) {
-    return pathUtil.join(writeToDir, pathUtil.parse(id).name + '.js');
-  }
-  return pathUtil.join(writeToDir, id + '.js');
+function outpathGenerator(writeToDir) {
+  return (dep) => {
+    const id = dep.expose || dep.id;
+
+    if (pathUtil.isAbsolute(id)) {
+      return pathUtil.join(writeToDir, pathUtil.parse(id).name + '.js');
+    }
+    return pathUtil.join(writeToDir, id + '.js');
+  };
 }
 
 /**
- * Returns a stream that takes in {outpath: string, content: string} objects
- * and writes files.
- * @param {boolean} verbose
+ * Returns a stream that adds an "outfile" property to each dep
+ * @param {string} writeToDir
+ * @param {function} getOutfile
  * @return {Stream}
  */
-function writeFiles(verbose) {
-  return highland.flatMap(file => writeFile(file.outpath, file.content)
-    .doto(() => verbose && console.log(`${file.sourceFile} -> ${file.outpath}`))
-  );
+function assignOutfiles(writeToDir, getOutfile = outpathGenerator(writeToDir)) {
+  return _.map(dep => Object.assign({}, dep, {outfile: getOutfile(dep)}));
+}
+
+/**
+ * Write deps, combining deps with the same outfile
+ * @param {boolean} verbose Log writes
+ * @return {Stream}
+ */
+function writeDeps(verbose) {
+  return (deps) => _(deps)
+    .group('outfile')
+    .flatMap(_.pairs)
+    .flatMap(writeDepGroup(verbose));
+}
+
+/**
+ * Write groups of deps
+ * @param {boolean} verbose Log writes
+ * @return {Stream}
+ */
+function writeDepGroup(verbose) {
+  return ([outfile, deps]) => {
+    return _(deps)
+      .reduce('', (prev, dep) => prev += dep.content + '\n')
+      .flatMap(allContent => writeFile(outfile, allContent))
+      .doto(() => verbose && deps.forEach(dep => console.log(`${dep.sourceFile || dep.id} -> ${outfile}`)));
+  };
 }
 
 module.exports = function browserifyGlobalPack(b, opts) {
-  if (typeof opts.writeToDir !== 'string') {
-    throw new Error('Browserify-global-pack requires the "writeToDir" option to be set');
+  if (!(opts.writeToDir || opts.getOutfile)) {
+    throw new Error('Browserify-global-pack requires "writeToDir" or "getOutfile" to be set');
   }
-
-  b.pipeline.get('pack').splice(0, 1, packAndWrite(opts.writeToDir));
+  if (opts.writeToDir && opts.getOutfile) {
+    throw new Error('Overspecified: Browserify-global-pack does not allow "writeToDir" or "getOutfile" to be set together');
+  }
+  b.pipeline.get('pack').splice(0, 1, packAndWrite(opts.writeToDir, opts));
 };
-
