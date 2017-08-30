@@ -32,7 +32,7 @@ function packAndWrite(writeToDir, {scope, verbose, getOutfile} = {}) {
  * @param {string} writeToDir
  * @return {string}
  */
-function outpathGenerator(writeToDir) {
+function getOutfileFnc(writeToDir) {
   return (dep) => {
     const id = dep.expose || dep.id;
 
@@ -49,7 +49,7 @@ function outpathGenerator(writeToDir) {
  * @param {function} getOutfile
  * @return {Stream}
  */
-function assignOutfiles(writeToDir, getOutfile = outpathGenerator(writeToDir)) {
+function assignOutfiles(writeToDir, getOutfile = getOutfileFnc(writeToDir)) {
   return _.map(dep => Object.assign({}, dep, {outfile: getOutfile(dep)}));
 }
 

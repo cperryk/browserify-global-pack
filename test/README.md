@@ -29,6 +29,17 @@ bundler.plugin(browserifyGlobalPack, {
 Results in **four** files:
 
 * `bundle/prelude.js`: Declares `window.modules` object. Must be embedded before other scripts.
-* `bundle/a.js`: Adds `a` module to `window.modules`.
-* `bundle/b.js`: Adds `b` module to `window.modules`.
+* `bundle/a.js`: Adds module `a` to `window.modules`.
+* `bundle/b.js`: Adds module `b` to `window.modules`.
 * `bundle/postlude.js`: Defines `require` and mounts require context.
+
+## Options
+
+* `writeToDir`: Mandatory unless `getOutfile` is set. String describing the path to the directory where deps will be saved.
+* `getOutfile`: Mandatory unless `writeToDir` is set. Function. The first argument is a module-dep object. Every dep in the bundle passes through this function, which should return the path (string) to which the dep should be saved. If this function returns the same path for multiple deps, those deps will be combined into one file. Examples:
+  * `(dep) => path.join('bundle', 'dep-' + dep.id + '.js')` saves deps to the `bundle` folder and prefix their filenames with `dep-`.
+  * `(dep) => 'deps.js'` save all deps to a single file, `deps.js`.
+  * `(dep) => path.join('bundle', (dep.id === 'a' || dep.id === 'b') ? 'group1.js' : 'group2.js')` saves modules `a` and `b` to a `group1.js` file and all other deps to a `group2.js` file.
+
+* `scope`: Optional. String. [Global-pack](https://www.npmjs.com/package/global-pack) scope. Defaults to `window.modules`.
+* `verbose`: Optional. Boolean. If `true`, log each time a dep is written.
