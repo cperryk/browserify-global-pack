@@ -40,6 +40,6 @@ Results in **four** files:
   * `(dep) => path.join('bundle', 'dep-' + dep.id + '.js')` saves deps to the `bundle` folder and prefix their filenames with `dep-`.
   * `(dep) => 'deps.js'` save all deps to a single file, `deps.js`.
   * `(dep) => path.join('bundle', (dep.id === 'a' || dep.id === 'b') ? 'group1.js' : 'group2.js')` saves modules `a` and `b` to a `group1.js` file and all other deps to a `group2.js` file.
-
+* `cache`: Optional. Array. If set, this plugin will save all deps to this array before writing them out. If deps are already in this array when bundling, any deps in it that do not appear in the bundle will be added to the bundle.
 * `scope`: Optional. String. [Global-pack](https://www.npmjs.com/package/global-pack) scope. Defaults to `window.modules`.
 * `verbose`: Optional. Boolean. If `true`, log each time a dep is written.

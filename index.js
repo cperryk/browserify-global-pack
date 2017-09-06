@@ -8,23 +8,46 @@ const globalPack = require('global-pack'),
 
 /**
  * Returns a stream that takes in deps from a Browserify
- * bundle process, runs them through global-pack, and
- * writes each module out to a file at the specified
- * destination directory.
+ * bundle process (a module-deps stream), runs them through
+ * global-pack, and writes each module out to a file at
+ * the specified destination directory.
  * @param {string} writeToDir
  * @param {object} [opts]
  * @param {string} [opts.scope] global-pack scope
  * @param {string} [opts.verbose] log file writes
  * @param {function} [opts.getOutfile] Customize filenames of modules
+ * @param {object[]} [opts.cache]
  * @returns {Stream}
  */
-function packAndWrite(writeToDir, {scope, verbose, getOutfile} = {}) {
-  return _.pipeline(
+function packAndWrite(writeToDir, {scope, verbose, getOutfile, cache} = {}) {
+  const pipeline = [
     globalPack({scope, objectMode: true}),
+    cache && mergeCache(cache),
+    cache && collectCache(cache),
     assignOutfiles(writeToDir, getOutfile),
     writeDeps(verbose)
-  );
+  ].filter(i => i);
+
+  return _.pipeline(...pipeline);
 };
+
+/**
+ * Add anything in cache to stream that is not already in stream
+ * @param {object} cache
+ * @return {stream}
+ */
+function mergeCache(cache) {
+  const cacheStream = _(Object.keys(cache).map(key => cache[key]));
+
+  return (deps) => _(deps)
+    .concat(cacheStream)
+    .uniqBy((a, b) => a.id === b.id);
+}
+
+function collectCache(cache) {
+  cache.splice(0, cache.length);
+  return _.doto(dep => cache.push(dep));
+}
 
 /**
  * Returns a function that returns the absolute filepath

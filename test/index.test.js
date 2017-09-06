@@ -24,7 +24,7 @@ describe('browserify-global-pack', function () {
     fs.removeSync(bundlePath);
   });
 
-  it ('throws error if writeToDir is not specified', function () {
+  it ('throws error if writeToDir nor getOutfile is specified', function () {
     expect(()=>browserifyGlobalPack()).to.throw(Error);
   });
 
@@ -43,7 +43,7 @@ describe('browserify-global-pack', function () {
     bundlePromise
       .then(() => {
         EXPECTED_FILES.forEach((filename, index) => {
-          assertFileContent(path.join(__dirname, './bundle', filename), expectedOutput[index]);
+          assertOut(filename, expectedOutput[index]);
         });
       })
       .then(() => done())
@@ -62,7 +62,7 @@ describe('browserify-global-pack', function () {
     bundlePromise
       .then(()=>{
         EXPECTED_FILES.forEach((filename, index)=> {
-          assertFileContent(path.join(__dirname, 'bundle', filename), expectedOutput[index].replace(/window.modules/g, 'foo.bar'));
+          assertOut(filename, expectedOutput[index].replace(/window.modules/g, 'foo.bar'));
         });
       })
       .then(() => done())
@@ -99,7 +99,7 @@ describe('browserify-global-pack', function () {
     bundlePromise
       .then(() => {
         EXPECTED_FILES.forEach((filename, index) => {
-          assertFileContent(path.join(__dirname, 'bundle', 'out-' + index + '.js'), expectedOutput[index]);
+          assertOut('out-' + index + '.js', expectedOutput[index]);
         });
       })
       .then(() => done())
@@ -117,13 +117,88 @@ describe('browserify-global-pack', function () {
 
     bundlePromise
       .then(() => {
-        assertFileContent(path.join(__dirname, 'bundle', 'out-0.js'), expectedOutput[0] + expectedOutput[1]);
-        assertFileContent(path.join(__dirname, 'bundle', 'out-1.js'), expectedOutput[2] + expectedOutput[3]);
+        assertOut('out-0.js', expectedOutput[0] + expectedOutput[1]);
+        assertOut('out-1.js', expectedOutput[2] + expectedOutput[3]);
+      })
+      .then(() => done())
+      .catch(done);
+  });
+
+  it ('collects deps in cache array if provided', function (done) {
+    const cache = [],
+      bundler = browserify({fullPaths: true})
+        .require(path.join(__dirname, 'input', './a.js'))
+        .plugin(browserifyGlobalPack, {
+          cache,
+          writeToDir: path.join(__dirname, 'bundle')
+        }),
+      bundlePromise = _(bundler.bundle()).toPromise(Promise);
+
+    bundlePromise
+      .then(() => {
+        expect(cache[0].id).to.equal('prelude');
+        expect(cache[1].id).to.equal(path.join(__dirname, 'input', 'a.js'));
+        expect(cache[2].id).to.equal(path.join(__dirname, 'input', 'b.js'));
+        expect(cache[3].id).to.equal('postlude');
+        expectedOutput.forEach((output, index) => {
+          expect(cache[index].content).to.equal(output.slice(0, -1)); // (exclude \n)
+        });
+      })
+      .then(() => done())
+      .catch(done);
+  });
+
+  it ('includes files in cache that are missing in bundle', function (done) {
+    const cache = [{
+        id: 'c',
+        content: 'foo'
+      }],
+      bundler = browserify({fullPaths: true})
+        .require(path.join(__dirname, 'input', './a.js'))
+        .plugin(browserifyGlobalPack, {
+          cache,
+          writeToDir: path.join(__dirname, 'bundle')
+        }),
+      bundlePromise = _(bundler.bundle()).toPromise(Promise);
+
+    bundlePromise
+      .then(() => {
+        assertOut('c.js', 'foo\n');
+      })
+      .then(() => done())
+      .catch(done);
+  });
+
+  it ('does not overwrite files in bundle with files in cache', function (done) {
+    const cache = [{
+        id: path.join(__dirname, 'input', 'a.js'),
+        content: 'foo'
+      }],
+      bundler = browserify({fullPaths: true})
+        .require(path.join(__dirname, 'input', './a.js'))
+        .plugin(browserifyGlobalPack, {
+          cache,
+          writeToDir: path.join(__dirname, 'bundle')
+        }),
+      bundlePromise = _(bundler.bundle()).toPromise(Promise);
+
+    bundlePromise
+      .then(() => {
+        assertOut('a.js', expectedOutput[1]);
       })
       .then(() => done())
       .catch(done);
   });
 });
+
+/**
+ * Assert that the file at ./bundle/$filename has the expected content.
+ * @param {string} filename
+ * @param {string} content
+ */
+function assertOut(filename, content) {
+  assertFileContent(path.join(__dirname, 'bundle', filename), content);
+}
 
 function assertFileContent(file, content) {
   expect(fs.readFileSync(file, 'utf8')).to.equal(content);
