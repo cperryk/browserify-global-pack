@@ -82,25 +82,22 @@ function assignOutfiles(writeToDir, getOutfile = getOutfileFnc(writeToDir)) {
  * @return {Stream}
  */
 function writeDeps(verbose) {
-  return (deps) => _(deps)
-    .group('outfile')
+  return deps => _(deps)
+    .reduce({}, (files, dep) => {
+      const outfiles = Array.isArray(dep.outfile) ? dep.outfile : [dep.outfile];
+
+      outfiles.forEach(outfile => {
+        files[outfile] = (files[outfile] || '') + dep.content + '\n';
+        if (verbose) console.log(`${dep.sourceFile || dep.id} -> ${outfile}`);
+      });
+      return files;
+    })
     .flatMap(_.pairs)
-    .flatMap(writeDepGroup(verbose));
+    .flatMap(([file, content]) => writeFile(file, content))
+    .map(() => deps)
+    .collect();
 }
 
-/**
- * Write groups of deps
- * @param {boolean} verbose Log writes
- * @return {Stream}
- */
-function writeDepGroup(verbose) {
-  return ([outfile, deps]) => {
-    return _(deps)
-      .reduce('', (prev, dep) => prev += dep.content + '\n')
-      .flatMap(allContent => writeFile(outfile, allContent))
-      .doto(() => verbose && deps.forEach(dep => console.log(`${dep.sourceFile || dep.id} -> ${outfile}`)));
-  };
-}
 
 module.exports = function browserifyGlobalPack(b, opts) {
   if (!(opts.writeToDir || opts.getOutfile)) {

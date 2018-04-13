@@ -124,6 +124,26 @@ describe('browserify-global-pack', function () {
       .catch(done);
   });
 
+  it ('writes a module to multiple files if getOutfile returns array for it', function (done) {
+    const bundler = browserify({fullPaths: true})
+        .require(path.join(__dirname, 'input', './a.js'))
+        .plugin(browserifyGlobalPack, {
+          getOutfile: () => [
+            path.join(__dirname, 'bundle', 'out-1.js'),
+            path.join(__dirname, 'bundle', 'out-2.js')
+          ]
+        }),
+      bundlePromise = _(bundler.bundle()).toPromise(Promise);
+
+    bundlePromise
+      .then(() => {
+        assertOut('out-1.js', expectedOutput.join(''));
+        assertOut('out-2.js', expectedOutput.join(''));
+        done();
+      })
+      .catch(done);
+  });
+
   it ('collects deps in cache array if provided', function (done) {
     const cache = [],
       bundler = browserify({fullPaths: true})
@@ -189,6 +209,7 @@ describe('browserify-global-pack', function () {
       .then(() => done())
       .catch(done);
   });
+
 });
 
 /**
